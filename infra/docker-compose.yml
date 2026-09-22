@@ -1,0 +1,170 @@
+services:
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_NAME: ${APP_NAME}
+      APP_VERSION: ${APP_VERSION}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
+      DATA_ROOT: ${DATA_ROOT}
+      DEFAULT_COMPANY_CODE: ${DEFAULT_COMPANY_CODE}
+      DEFAULT_REGION_CODE: ${DEFAULT_REGION_CODE}
+      DEFAULT_FACTORY_CODE: ${DEFAULT_FACTORY_CODE}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE}
+      SUPPORTED_REGION_CODES: ${SUPPORTED_REGION_CODES}
+      SUPPORTED_FACTORY_CODES: ${SUPPORTED_FACTORY_CODES}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      AUTH_MODE: ${AUTH_MODE}
+      JWT_SECRET: ${JWT_SECRET}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      SSO_ISSUER_URL: ${SSO_ISSUER_URL}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      MINIO_HOST: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: ${MINIO_SECURE}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUSINESS_BUCKET: ${MINIO_BUSINESS_BUCKET}
+      MINIO_VECTOR_BUCKET: ${MINIO_VECTOR_BUCKET}
+      ETCD_ENDPOINTS: etcd:2379
+      MILVUS_HOST: milvus
+      MILVUS_PORT: 19530
+      MILVUS_URI: http://milvus:19530
+      MILVUS_COLLECTION_PREFIX: ${MILVUS_COLLECTION_PREFIX}
+      FILE_MAX_SIZE_MB: ${FILE_MAX_SIZE_MB}
+      ALLOWED_FILE_EXTENSIONS: ${ALLOWED_FILE_EXTENSIONS}
+      FILE_SCAN_REQUIRED: ${FILE_SCAN_REQUIRED}
+      DOCUMENT_DEFAULT_CLASSIFICATION: ${DOCUMENT_DEFAULT_CLASSIFICATION}
+      DOCUMENT_DEFAULT_DOMAIN: ${DOCUMENT_DEFAULT_DOMAIN}
+      DOCUMENT_DEFAULT_FACTORY_CODE: ${DOCUMENT_DEFAULT_FACTORY_CODE}
+      STORAGE_RAW_PREFIX: ${STORAGE_RAW_PREFIX}
+      STORAGE_PROCESSED_PREFIX: ${STORAGE_PROCESSED_PREFIX}
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_DIR: /app/logs
+      LOG_FILE_NAME: ai-portal.jsonl
+      LOG_ROTATION_MB: ${LOG_ROTATION_MB}
+      LOG_BACKUP_COUNT: ${LOG_BACKUP_COUNT}
+      TRACE_HEADER: ${TRACE_HEADER}
+      MODEL_GATEWAY_DEFAULT_PROVIDER: ${MODEL_GATEWAY_DEFAULT_PROVIDER}
+      MODEL_GATEWAY_TIMEOUT_SECONDS: ${MODEL_GATEWAY_TIMEOUT_SECONDS}
+      MODEL_GATEWAY_MAX_RETRIES: ${MODEL_GATEWAY_MAX_RETRIES}
+      EXTERNAL_MODEL_ENABLED: ${EXTERNAL_MODEL_ENABLED}
+      ZHIPU_API_BASE_URL: ${ZHIPU_API_BASE_URL}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY}
+      ZHIPU_MODEL: ${ZHIPU_MODEL}
+      QWEN_API_BASE_URL: ${QWEN_API_BASE_URL}
+      QWEN_API_KEY: ${QWEN_API_KEY}
+      QWEN_MODEL: ${QWEN_MODEL}
+      LOCAL_MODEL_ENABLED: ${LOCAL_MODEL_ENABLED}
+      LOCAL_MODEL_DIR: ${LOCAL_MODEL_DIR}
+      LOCAL_INTENT_MODEL: ${LOCAL_INTENT_MODEL}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL}
+      LOCAL_RERANKER_MODEL: ${LOCAL_RERANKER_MODEL}
+      GPU_ENABLED: ${GPU_ENABLED}
+      GPU_DEVICE: ${GPU_DEVICE}
+    ports:
+      - "${API_PORT}:8000"
+    volumes:
+      - ../logs/backend:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      milvus:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT}:80"
+    volumes:
+      - ../logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - ${DATA_ROOT}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - ${DATA_ROOT}/redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - ${DATA_ROOT}/minio:/data
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: 1000
+      ETCD_QUOTA_BACKEND_BYTES: 4294967296
+      ETCD_SNAPSHOT_COUNT: 50000
+    command: >-
+      etcd
+      --advertise-client-urls=http://0.0.0.0:2379
+      --listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    volumes:
+      - ${DATA_ROOT}/etcd:/etcd
+
+  milvus:
+    image: milvusdb/milvus:v2.4.15
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    depends_on:
+      - etcd
+      - minio
+    volumes:
+      - ${DATA_ROOT}/milvus:/var/lib/milvus

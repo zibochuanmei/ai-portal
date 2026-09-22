@@ -1,0 +1,28 @@
+# local configuration
+infra/.env
+backend/.env
+frontend/.env
+
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Runtime logs (keep the directory, never commit log contents)
+logs/*
+!logs/.gitkeep
+
+logs/backend/*
+!logs/backend/.gitkeep
+
+logs/nginx/*
+!logs/nginx/.gitkeep
+
+# Local Compose data and server-mounted data root
+.data/
