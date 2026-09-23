@@ -1,89 +1,104 @@
-# 本地开发与 Git 拉取和启动步骤
+# 本地开发与 Git 上传步骤
 
-## 一、拉取项目
+## 一、项目目录
 
-项目已经上传到 GitHub，组员不需要重新初始化仓库：
+当前项目骨架目录：
 
-    cd D:\AI
-    git clone https://github.com/zibochuanmei/ai-portal.git
-    cd ai-portal
-    git switch main
+    C:\Users\liu\.codex\worktrees\1e2f\RAG项目\ai-portal
 
-后续同步最新代码：
+建议后续将 ai-portal 单独复制到日常开发目录，例如：
 
-    git pull origin main
+    D:\AI项目\ai-portal
 
-## 二、统一版本和环境变量
+不要把外层目录中的历史文档和其他项目一起上传。
 
-四台开发电脑统一使用：
+## 二、本地首次启动
 
-- Python 3.13.15
-- Node.js 24.21.0
-- Git 2.55.0.5 或更高版本
-- Docker Desktop 和 Compose V2（启动 PostgreSQL、Redis、MinIO、Milvus 时需要）
+开始前确认四台电脑统一使用 Python 3.13.15、Node.js 24.21.0 和 Git for Windows 2.55.0.5。执行 `scripts/verify-environment.ps1` 会按命令行可识别的 2.55.0 或更高版本检查；Windows Git 的安装包构建号不要求与命令行输出完全一致。
 
-复制开发环境变量：
+在 ai-portal 目录打开 PowerShell。
+
+### 1. 准备环境变量
 
     Copy-Item infra/.env.example infra/.env
 
-`infra/.env` 只用于本机开发，不能提交到 GitHub。正式服务器必须更换数据库、MinIO 和其他服务密码。
+开发环境可以先使用模板中的默认值；正式服务器必须更换数据库和 MinIO 密码。
 
-## 三、无 Docker 时先启动前后端演示
+### 2. 启动基础服务
 
-Docker 尚未安装时，可以先验证前端、后端、身份和工作流接口。此时数据库、Redis、MinIO 和 Milvus 还不会启动，文件只保存到本地开发目录。
+确保 Docker Desktop 已启动，然后执行：
 
-打开第一个 PowerShell：
+    docker compose --env-file infra/.env -f infra/docker-compose.yml up -d
 
-    cd D:\AI\ai-portal\backend
-    py -3.13 --version
-    py -3.13 -m venv .venv
+查看容器：
+
+    docker compose --env-file infra/.env -f infra/docker-compose.yml ps
+
+### 3. 启动后端
+
+打开新的 PowerShell：
+
+    cd backend
+    python -m venv .venv
     .\.venv\Scripts\Activate.ps1
-    python --version
-    python -m pip install -e ".[dev]"
-    python -m uvicorn app.main:app --reload --port 8000
+    pip install -e .
+    uvicorn app.main:app --reload --port 8000
 
-`py -3.13 --version` 和激活后的 `python --version` 都必须显示 Python 3.13.15。
+验证：
 
-打开第二个 PowerShell：
+    http://localhost:8000/health
 
-    cd D:\AI\ai-portal\frontend
+返回 status 为 ok 才表示后端启动成功。
+
+后端日志会同时输出到当前终端和 `logs/backend/ai-portal.jsonl`。如果接口出现异常，先复制响应头中的 `X-Request-ID`，再按 `docs/日志与调试说明.md` 查询完整请求链路。
+
+### 4. 启动前端
+
+再打开一个新的 PowerShell：
+
+    cd frontend
     npm install
     npm run dev
 
-浏览器访问 `http://localhost:5173`，后端健康检查为 `http://localhost:8000/health`。
+浏览器访问：
 
-## 四、Docker 安装后启动基础服务
+    http://localhost:5173
 
-安装并启动 Docker Desktop 后，在项目根目录执行：
+## 三、首次上传 Git
 
-    docker compose --env-file infra/.env -f infra/docker-compose.yml up -d
-    docker compose --env-file infra/.env -f infra/docker-compose.yml ps
+建议在 GitHub 或公司 Git 服务上新建一个空仓库，仓库名称使用 ai-portal，不要先自动创建 README。
 
-基础服务启动后，再按上面的步骤启动后端和前端。
+在 ai-portal 目录执行：
 
-## 五、团队分支协作
+    git init
+    git add .
+    git commit -m "chore: initialize ai portal project skeleton"
+    git branch -M main
+    git remote add origin <远程仓库地址>
+    git push -u origin main
 
-远程 `main` 保存可演示版本，功能开发从 `develop` 创建个人分支：
+团队协作分支：
 
-    git fetch origin
+    git switch -c develop
+    git push -u origin develop
+
+以后开发功能时，从 develop 创建个人分支，例如：
+
     git switch develop
-    git pull origin develop
+    git pull
     git switch -c feature/database-auth
 
-提交前至少执行：
+## 四、上传前检查
 
-    npm run build --prefix frontend
-    git diff --check
+    docker compose --env-file infra/.env.example -f infra/docker-compose.yml config --quiet
+    python -m compileall -q backend/app
     git status
 
-## 六、上传前检查
+确认以下内容没有被上传：
 
-不得提交以下内容：
-
-- `infra/.env`
-- `backend/.venv`
-- `frontend/node_modules`
+- infra/.env
+- backend/.venv
+- frontend/node_modules
 - API Key、数据库密码和服务器私钥
-- `logs` 目录中的实际日志内容
 
-这些内容已经在项目根目录 `.gitignore` 中配置为忽略。
+这些内容已经在 ai-portal/.gitignore 中配置为忽略。
