@@ -35,9 +35,11 @@
 
 3. 启动后端：
    cd backend
-   python -m venv .venv
+   py -3.13 --version  # 必须显示 Python 3.13.15
+   py -3.13 -m venv .venv
    .\.venv\Scripts\Activate.ps1
-   pip install -e ".[dev]"
+   python --version     # 激活后仍必须显示 Python 3.13.15
+   python -m pip install -e ".[dev]"
    uvicorn app.main:app --reload --port 8000
 
 4. 启动前端（新开一个终端）：
