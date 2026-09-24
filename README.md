@@ -40,6 +40,7 @@
    .\.venv\Scripts\Activate.ps1
    python --version     # 激活后仍必须显示 Python 3.13.15
    python -m pip install -e ".[dev]"
+   python -m alembic upgrade head
    uvicorn app.main:app --reload --port 8000
 
 4. 启动前端（新开一个终端）：
@@ -55,7 +56,8 @@
 
 - 当前使用演示身份 employee 和 platform_admin，尚未接企业 SSO；可用 `X-Demo-User: demo-admin-001` 测试管理员接口。
 - /api/v1/workflows 返回后端根据用户权限计算出的可见工作流，前端不自行判断权限。
-- /api/v1/workflows/{workflow_id}/runs 目前返回模拟结果，用于验证前后端链路；真实 LangGraph 工作流和模型调用会接入 Model Gateway。
+- /api/v1/workflows/{workflow_id}/runs 目前返回演示结果，但运行记录已经持久化到 PostgreSQL；真实 LangGraph 工作流和模型调用会接入 Model Gateway。
+- `workflow_runs.conversation_id` 已为后续历史对话预留；会话、消息、工作流分类、知识库分类和资料分类将在后续数据模型阶段接入。
 - 文件上传目前保存到本地开发目录并校验大小/扩展名；生产环境替换为 MinIO，不能把本地目录当作生产文件存储。
 - Milvus 是唯一向量数据库；业务代码后续通过 VectorStoreService 访问，禁止直接散落连接。
 - 当前日志已经按技术选型接入 `structlog + trace_id`；Prometheus/Grafana 和 Celery Worker 作为下一阶段基础设施接入，不在演示骨架中伪装成已完成能力。

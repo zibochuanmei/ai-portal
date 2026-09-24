@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import request_logging_middleware
 from app.core.errors import ApiError, api_error_handler
+from app.db.session import ping_database
 
 
 settings = get_settings()
@@ -37,6 +38,7 @@ app.include_router(api_router, prefix=settings.api_prefix)
 
 @app.on_event("startup")
 async def log_startup() -> None:
+    await ping_database()
     logger.info(
         "application_started",
         service=settings.app_name,

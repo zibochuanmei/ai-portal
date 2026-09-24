@@ -1,18 +1,21 @@
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.catalog import get_agent
 from app.agent.schemas import AgentSummary, WorkflowSummary
 from app.auth.service import UserContext, get_current_user, require_platform_admin
 from app.core.errors import ApiError
 from app.core.logging import get_logger
+from app.db.session import get_db_session
 from app.file.service import file_service
 from app.permission.service import PermissionService
+from app.workflow.models import WorkflowRun
+from app.workflow.repository import WorkflowRunRepository
 
 
 router = APIRouter()
@@ -38,15 +41,6 @@ class WorkflowRunResponse(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class StoredWorkflowRun:
-    owner_id: str
-    response: WorkflowRunResponse
-
-
-_runs: dict[str, StoredWorkflowRun] = {}
-
-
 def _workflow_summary(agent: AgentSummary) -> WorkflowSummary:
     return WorkflowSummary(
         workflow_id=agent.id,
@@ -64,6 +58,38 @@ def _require_workflow(user: UserContext, workflow_id: str) -> AgentSummary:
     if workflow is None or not permission_service.can_execute_agent(user.id, workflow_id, user.role):
         raise ApiError(404, "WORKFLOW_NOT_FOUND", "工作流不存在或当前身份无权使用")
     return workflow
+
+
+def _workflow_run_response(run: WorkflowRun) -> WorkflowRunResponse:
+    created_at = run.created_at.isoformat() if run.created_at else datetime.now(timezone.utc).isoformat()
+    return WorkflowRunResponse(
+        run_id=str(run.run_id),
+        task_id=str(run.run_id),
+        workflow_id=run.workflow_id,
+        workflow_version_id=run.workflow_version_id,
+        conversation_id=run.conversation_id,
+        status=run.status,  # type: ignore[arg-type]
+        created_at=created_at,
+        answer=run.answer,
+        citations=run.citations,
+    )
+
+
+async def _load_workflow_run(
+    run_id: str,
+    user: UserContext,
+    session: AsyncSession,
+) -> WorkflowRunResponse:
+    try:
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise ApiError(404, "RUN_NOT_FOUND", "运行记录不存在") from exc
+
+    repository = WorkflowRunRepository(session)
+    stored = await repository.get_visible(parsed_run_id, user.id, user.role == "platform_admin")
+    if stored is None:
+        raise ApiError(404, "RUN_NOT_FOUND", "运行记录不存在")
+    return _workflow_run_response(stored)
 
 
 @router.get("/me", response_model=UserContext)
@@ -95,6 +121,7 @@ async def create_workflow_run(
     workflow_id: str,
     payload: WorkflowRunRequest,
     user: UserContext = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ) -> WorkflowRunResponse:
     workflow = _require_workflow(user, workflow_id)
     for file_id in payload.file_ids:
@@ -102,33 +129,39 @@ async def create_workflow_run(
 
     run_id = str(uuid4())
     message = str(payload.inputs.get("message", ""))
-    run = WorkflowRunResponse(
-        run_id=run_id,
-        task_id=run_id,
+    repository = WorkflowRunRepository(session)
+    stored = await repository.create(
+        run_id=UUID(run_id),
+        owner_id=user.id,
         workflow_id=workflow.id,
         workflow_version_id=f"{workflow.id}:demo",
         conversation_id=payload.conversation_id,
         status="succeeded",
-        created_at=datetime.now(timezone.utc).isoformat(),
+        inputs=payload.inputs,
         answer=f"这是 {workflow.name} 的演示结果。已收到你的需求：{message}",
         citations=[],
     )
-    _runs[run_id] = StoredWorkflowRun(owner_id=user.id, response=run)
+    run = _workflow_run_response(stored)
     logger.info("workflow_run_created", user_id=user.id, workflow_id=workflow.id, run_id=run_id)
     return run
 
 
 @router.get("/workflow-runs/{run_id}", response_model=WorkflowRunResponse)
-async def get_workflow_run(run_id: str, user: UserContext = Depends(get_current_user)) -> WorkflowRunResponse:
-    stored = _runs.get(run_id)
-    if stored is None or (stored.owner_id != user.id and user.role != "platform_admin"):
-        raise ApiError(404, "RUN_NOT_FOUND", "运行记录不存在")
-    return stored.response
+async def get_workflow_run(
+    run_id: str,
+    user: UserContext = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> WorkflowRunResponse:
+    return await _load_workflow_run(run_id, user, session)
 
 
 @router.get("/workflow-runs/{run_id}/result", response_model=WorkflowRunResponse)
-async def get_workflow_result(run_id: str, user: UserContext = Depends(get_current_user)) -> WorkflowRunResponse:
-    return await get_workflow_run(run_id, user)
+async def get_workflow_result(
+    run_id: str,
+    user: UserContext = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> WorkflowRunResponse:
+    return await _load_workflow_run(run_id, user, session)
 
 
 @router.post("/files", status_code=status.HTTP_201_CREATED)

@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     gpu_device: int = 0
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../infra/.env"),
+        env_file=("../infra/.env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

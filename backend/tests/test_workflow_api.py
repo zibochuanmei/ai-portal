@@ -34,6 +34,24 @@ def test_workflow_run_uses_workflow_contract_and_returns_accepted() -> None:
     assert body["run_id"]
 
 
+def test_workflow_run_survives_route_memory_reset() -> None:
+    created = client.post(
+        "/api/v1/workflows/document-assistant/runs",
+        json={"inputs": {"message": "重启后仍可读取"}},
+    )
+    assert created.status_code == 202
+    run_id = created.json()["run_id"]
+
+    import app.api.routes as routes
+
+    if hasattr(routes, "_runs"):
+        routes._runs.clear()
+
+    response = client.get(f"/api/v1/workflow-runs/{run_id}")
+    assert response.status_code == 200
+    assert response.json()["run_id"] == run_id
+
+
 def test_workflow_run_is_visible_to_owner_but_not_another_employee() -> None:
     created = client.post(
         "/api/v1/workflows/document-assistant/runs",
