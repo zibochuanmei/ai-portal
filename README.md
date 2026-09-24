@@ -33,6 +33,8 @@
 2. 启动基础服务：
    docker compose --env-file infra/.env -f infra/docker-compose.yml up -d
 
+backend 容器启动时会自动执行 Alembic 迁移完成建表（幂等，可重复执行）；只有走本机 venv 方式启动后端时，才需要手动执行第 3 步中的 `python -m alembic upgrade head`。
+
 3. 启动后端：
    cd backend
    py -3.13 --version  # 必须显示 Python 3.13.15
